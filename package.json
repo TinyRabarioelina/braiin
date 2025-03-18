@@ -1,0 +1,28 @@
+{
+  "name": "braiin",
+  "version": "0.0.1",
+  "description": "Behavioral Reasoning AI for Intelligent Navigation",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist", "LICENSE"],
+  "keywords": [
+    "LLM",
+    "AI",
+    "behavioral",
+    "reasoning",
+    "orchestrator",
+    "agent",
+    "tool",
+    "self aware"
+  ],
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "typescript": "^5.8.2"
+  }
+}
