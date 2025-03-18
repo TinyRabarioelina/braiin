@@ -15,10 +15,11 @@ Inspired by systems like **J.A.R.V.I.S.**, **BRAIIN** enables **autonomous reaso
 npm install braiin
 ```
 ## Concept
-BRAIIN is based on the concept of an Orchestrator, one or multiple Agents that have each one or multiple Tools.
-A tool is an object that has a tag, a description, an input and an output fields. It's purpose is to achieve a given specifica goal.
-An agent is an object that has a tag, a description, a list of tools and a list of tools. Each agent is specialised in a specific topic (math, management, handling files, ...) and has a set of tools (write file, read file, ...) that can be used to achieve a specific goal.
-An orchestrator is an object that has a tag, a description and a list of agents that are each specialised in a specific topic.
+BRAIIN is based on the concept of an Orchestrator and one or multiple Agents that have each one or multiple Tools.
+
+- A tool is an object that has a tag, a description, an input and an output fields. It's purpose is to achieve a given specific goal like writing a file.
+- An agent is an object that has a tag, a description and a list of tools. Each agent is specialised in a specific topic (math, management, handling files, ...) and has a set of tools (write file, read file, ...) that can be used to achieve a specific goal.
+- An orchestrator is an object that has a set of agents that are each specialised in a specific topic.
 The orchestrator is the one that orchestrate the execution of the tools based on the user's request. It is the one that chooses which agent to use and which tool to use, he is capable of combining the tools to achieve the best result.
 
 ## Example
