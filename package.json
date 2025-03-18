@@ -1,6 +1,6 @@
 {
   "name": "braiin",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Behavioral Reasoning AI for Intelligent Navigation",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
