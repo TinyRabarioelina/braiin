@@ -106,7 +106,7 @@ export class Orchestrator {
     + 'Loop through all this until you have the final answer.'
     + 'If you can\'t resolve the task, just send me the following json: {"tool":"none","input":"explication on why you cannot help"}.'
     + 'If you have the final answer, send me the following: {"tool":"finished","input":"the final result"}.'
-    + 'Don\'t explain the process of what you are doing, just do it and always exchange json objects with me.'
+    + 'Don\'t explain the process of what you are doing, just do it and always exchange json objects with me and always use the language I am using to communicate with you.'
     + optionalPrompt || ''
   }
 
@@ -130,9 +130,9 @@ export class Orchestrator {
             logCallback
           )
         } else {
-          logCallback && logCallback('Agent non trouvé pour cette action')
+          logCallback && logCallback('No matching agent found for this task')
 
-          return 'Agent non trouvé pour cette action'
+          return 'No matching agent found for this task'
         }
       } else {
         if (agent) {
@@ -153,14 +153,14 @@ export class Orchestrator {
                 logCallback
               )
             } else {
-              logCallback && logCallback('Outil non trouvé pour cette action')
+              logCallback && logCallback('No matching tool found for this task')
 
-              return 'Outil non trouvé pour cette action'
+              return 'No matching tool found for this task'
             }
           } else {
-            logCallback && logCallback('Agent non trouvé pour cette action')
+            logCallback && logCallback('No matching agent found for this task')
 
-            return 'Agent non trouvé pour cette action'
+            return 'No matching agent found for this task'
           }
         } else {
           return input as string
@@ -168,7 +168,7 @@ export class Orchestrator {
       }
     }
 
-    return 'Données mal formatées ' + actualResponse
+    return 'Data in wrong format ' + actualResponse
   }
 
   async executeTask(prompt: string, history?: LLMMessage[], logCallback?: (log: string) => void) {
