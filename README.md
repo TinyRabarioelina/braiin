@@ -76,7 +76,7 @@ import { userRetrieverTool } from './user.retriever.tool.ts';
 import { userBirthYearTool } from './user.birth.tool.ts';
 import { Agent, Orchestrator } from 'braiin';
 
-const agent = new Agent(
+const userAgent = new Agent(
   'user-agent',
   'You are a useful assistant that answers questions about users.',
   [
@@ -98,4 +98,6 @@ const orchestrator = new Orchestrator(
 const answer = await orchestrator.executeTask(
   "When was User 1 born?"
 )
+
+console.log(answer); //logs an LLM formatted answer based on the user's birth year
 ```
