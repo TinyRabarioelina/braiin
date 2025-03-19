@@ -50,8 +50,8 @@ export const userRetrieverTool: Tool = {
   description: `Retrieve a user informations from its name`,
   input: 'The user\'s name',
   output: 'A json object containing the user\'s informations if the user was found, an empty string otherwise',
-  call: async (topicId?: string) => {
-    const user = users.find(user => user.name === topicId)
+  call: async (userName?: string) => {
+    const user = users.find(user => user.name === userName)
 
     return user ? JSON.stringify(user) : ''
   }
@@ -96,7 +96,7 @@ const orchestrator = new Orchestrator(
   [userAgent],
   {
     apiKey: "your api key",
-    model: "gpt-4o,
+    model: "gpt-4o",
     serverUrl: "https://api.openai.com/v1/chat/completions",
     temperature: 0
   }
