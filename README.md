@@ -96,8 +96,8 @@ const orchestrator = new Orchestrator(
   [userAgent],
   {
     apiKey: "your api key",
-    model: "the LLM model you want to use,
-    serverUrl: "https://api.openai.com/v1/chat/completions if you are using ChatGPT, refer to their documentation if you are using another LLM",
+    model: "gpt-4o,
+    serverUrl: "https://api.openai.com/v1/chat/completions",
     temperature: 0
   }
 )

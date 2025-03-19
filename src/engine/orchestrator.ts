@@ -6,8 +6,8 @@ interface OrchestatorConfig {
   optionalPrompt?: string
   temperature?: number
   apiKey: string
-  serverUrl: string
-  model: string
+  serverUrl?: string
+  model?: string
 }
 
 export type LLMQuestioner = (
@@ -23,7 +23,13 @@ export class Orchestrator {
   private questioner: LLMQuestioner
 
   constructor(agents: Agent[], config: OrchestatorConfig) {
-    const { optionalPrompt, temperature, apiKey, serverUrl, model } = config
+    const {
+      optionalPrompt,
+      temperature = 0,
+      apiKey,
+      serverUrl = 'https://api.openai.com/v1/chat/completions',
+      model = 'gpt-4o'
+    } = config
     this.questioner = async (
       systemPrompt: string,
       prompt: string,
