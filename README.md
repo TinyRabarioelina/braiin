@@ -108,5 +108,5 @@ const answer = await orchestrator.executeTask(
   "When was User 1 born?"
 )
 
-console.log(answer); //logs an LLM formatted answer based on the user's birth year
+console.log(answer); // User 1 was born in 1998
 ```
