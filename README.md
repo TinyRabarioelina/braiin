@@ -22,7 +22,7 @@ BRAIIN is based on the concept of an Orchestrator and one or multiple Agents tha
 - An orchestrator is an object that has a set of agents that are each specialised in a specific topic.
 The orchestrator is the one that orchestrate the execution of the tools based on the user's request. It is the one that chooses which agent to use and which tool to use, he is capable of combining the tools to achieve the best result.
 
-![concept](./assets/braiin.png)
+![concept](https://github.com/TinyRabarioelina/braiin/blob/main/assets/braiin.png)
 
 ## Example
 ```typescript
