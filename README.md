@@ -74,7 +74,7 @@ export const userBirthYearTool: Tool = {
     const year = date.getFullYear()
     const ageAsNumber = age ? parseInt(age) : year
 
-    return year - ageAsNumber
+    return `${year - ageAsNumber}`
   }
 }
 ```
