@@ -1,10 +1,10 @@
 {
   "name": "braiin",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Behavioral Reasoning AI for Intelligent Navigation",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist", "LICENSE"],
+  "files": ["dist", "LICENSE", "assets"],
   "keywords": [
     "LLM",
     "AI",
