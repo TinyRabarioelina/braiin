@@ -1,6 +1,7 @@
 import { removeInfoStrings } from "../factory/string.factory";
+import { freeze } from "../service/timer";
 import { Agent } from "./agent";
-import { LLMMessage, LLMMessageRole, LLMResponse } from "./llm";
+import { LLMMessage, LLMMessageRole, LLMResponse } from "../model/llm";
 
 interface OrchestatorConfig {
   optionalPrompt?: string
@@ -8,6 +9,7 @@ interface OrchestatorConfig {
   apiKey: string
   serverUrl?: string
   model?: string
+  stepsInterval?: number
 }
 
 export type LLMQuestioner = (
@@ -21,6 +23,7 @@ export class Orchestrator {
   private agents: Agent[]
   private globalContext = ''
   private questioner: LLMQuestioner
+  private stepsInterval?: number
 
   constructor(agents: Agent[], config: OrchestatorConfig) {
     const {
@@ -28,14 +31,28 @@ export class Orchestrator {
       temperature = 0,
       apiKey,
       serverUrl = 'https://api.openai.com/v1/chat/completions',
-      model = 'gpt-4o'
+      model = 'gpt-4o',
+      stepsInterval
     } = config
+    this.stepsInterval = stepsInterval
     this.questioner = async (
       systemPrompt: string,
       prompt: string,
       history: LLMMessage[],
       callback?: (response: string) => any
     ) => {
+      const messages = [
+        {
+          role: 'system',
+          content: systemPrompt
+        },
+        ...history,
+        {
+          role: 'user',
+          content: prompt
+        }
+      ]
+
       const response = await fetch(serverUrl, {
         method: 'POST',
         headers: {
@@ -44,17 +61,7 @@ export class Orchestrator {
         },
         body: JSON.stringify({
           model,
-          messages: [
-            {
-              role: 'system',
-              content: systemPrompt
-            },
-            ...history,
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
+          messages,
           stream: callback ? true : false,
           max_tokens: 8192,
           temperature
@@ -117,7 +124,11 @@ export class Orchestrator {
   }
 
   private async chain(prompt: string, history: LLMMessage[], logCallback?: (log: string) => void): Promise<string> {
+    this.stepsInterval && await freeze(this.stepsInterval)
     const answer = await this.questioner(this.globalContext, prompt, history)
+    if (answer?.error) {
+      return `An error occured when calling the LLM ${answer.error.message}`
+    }
     const actualResponse = answer ? removeInfoStrings(answer.choices[0].message.content).trim() : ''
     logCallback && logCallback(actualResponse)
 
@@ -181,8 +192,7 @@ export class Orchestrator {
     return this.chain(
       prompt,
       [
-        ...(history || []),
-        { role: LLMMessageRole.USER, content: prompt }
+        ...(history || [])
       ],
       logCallback
     )
