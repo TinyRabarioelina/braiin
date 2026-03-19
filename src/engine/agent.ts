@@ -1,18 +1,16 @@
-import { Tool } from "./tool";
+import { Tool } from "./tool"
 
-export class Agent {
-  private tools: Tool[]
-  name = ''
-  description = ''
-
-  constructor(name: string, description: string, tools: Tool[]) {
-    this.name = name
-    this.description = description
-    this.tools = tools
-  }
-
-  getTools() {
-    return this.tools
-  }
-
+export interface Agent {
+  name: string
+  description: string
+  tools: Tool[]
 }
+
+export const createAgent = (name: string, description: string, tools: Tool[]): Agent => ({
+  name,
+  description,
+  tools
+})
+
+export const findTool = (agent: Agent, tag: string): Tool | undefined =>
+  agent.tools.find(t => t.tag === tag)

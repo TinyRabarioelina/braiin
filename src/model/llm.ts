@@ -28,3 +28,17 @@ export interface LLMResponseChoice {
   message: LLMMessage
   finish_reason: string
 }
+
+export interface ToolTrace {
+  tool: string
+  input: string | Record<string, any>
+  result: string
+}
+
+export type TaskStatus = 'success' | 'error'
+
+export interface TaskResult {
+  status: TaskStatus
+  answer: string
+  toolTraces: ToolTrace[]
+}
