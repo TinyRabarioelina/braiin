@@ -1,204 +1,181 @@
-import { removeInfoStrings } from "../factory/string.factory";
-import { freeze } from "../service/timer";
-import { Agent } from "./agent";
-import { LLMMessage, LLMMessageRole, LLMResponse } from "../model/llm";
+import { extractJson } from "../factory/string.factory"
+import { LLMMessage, LLMMessageRole, LLMResponse, TaskResult, ToolTrace } from "../model/llm"
+import { createLLMService, LLMService } from "../service/llm.service"
+import { buildSystemPrompt } from "../service/prompt.service"
+import { freeze } from "../service/timer"
+import { Agent, findTool } from "./agent"
 
-interface OrchestatorConfig {
+const DEFAULT_MAX_STEPS = 50
+
+export interface OrchestratorConfig {
   optionalPrompt?: string
   temperature?: number
   apiKey: string
   serverUrl?: string
   model?: string
   stepsInterval?: number
+  maxSteps?: number
+  llmService?: LLMService
 }
 
-export type LLMQuestioner = (
-  systemPrompt: string,
+export interface Orchestrator {
+  executeTask: (prompt: string, history?: LLMMessage[], toolTraces?: ToolTrace[], logCallback?: (log: string) => void) => Promise<TaskResult>
+  askLLM: (systemPrompt: string, prompt: string, history?: LLMMessage[], logCallback?: (log: string) => void) => Promise<LLMResponse | undefined>
+}
+
+interface ParsedResponse {
+  action?: string
+  agent?: string
+  tool?: string
+  input?: string | Record<string, any>
+}
+
+const chain = async (
   prompt: string,
   history: LLMMessage[],
-  callback?: (response: string) => any
-) => Promise<LLMResponse | undefined>
+  toolTraces: ToolTrace[],
+  step: number,
+  agents: Agent[],
+  llm: LLMService,
+  globalContext: string,
+  maxSteps: number,
+  stepsInterval?: number,
+  logCallback?: (log: string) => void
+): Promise<TaskResult> => {
+  if (step >= maxSteps) {
+    logCallback && logCallback('Max steps reached')
+    return { status: 'error', answer: 'Max steps reached', toolTraces }
+  }
 
-export class Orchestrator {
-  private agents: Agent[]
-  private globalContext = ''
-  private questioner: LLMQuestioner
-  private stepsInterval?: number
+  stepsInterval && await freeze(stepsInterval)
+  const answer = await llm.ask(globalContext, prompt, history)
+  if (answer?.error) {
+    return { status: 'error', answer: `An error occured when calling the LLM: ${answer.error.message}`, toolTraces }
+  }
 
-  constructor(agents: Agent[], config: OrchestatorConfig) {
-    const {
-      optionalPrompt,
-      temperature = 0,
-      apiKey,
-      serverUrl = 'https://api.openai.com/v1/chat/completions',
-      model = 'gpt-4o',
-      stepsInterval
-    } = config
-    this.stepsInterval = stepsInterval
-    this.questioner = async (
-      systemPrompt: string,
-      prompt: string,
-      history: LLMMessage[],
-      callback?: (response: string) => any
-    ) => {
-      const messages = [
-        {
-          role: 'system',
-          content: systemPrompt
-        },
-        ...history,
-        {
-          role: 'user',
-          content: prompt
-        }
-      ]
+  const actualResponse = answer?.choices[0]?.message.content?.trim() ?? ''
+  logCallback && logCallback(actualResponse)
 
-      const response = await fetch(serverUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model,
-          messages,
-          stream: callback ? true : false,
-          max_tokens: 8192,
-          temperature
+  const parsed = extractJson(actualResponse) as ParsedResponse | null
+  if (!parsed) {
+    return { status: 'error', answer: 'Data in wrong format: ' + actualResponse, toolTraces }
+  }
+
+  const { action, agent: agentName, tool: toolTag, input } = parsed
+  const nextStep = step + 1
+  const chainNext = (nextPrompt: string, nextHistory: LLMMessage[]) =>
+    chain(nextPrompt, nextHistory, toolTraces, nextStep, agents, llm, globalContext, maxSteps, stepsInterval, logCallback)
+
+  if (action === 'describe') {
+    return handleDescribe(agentName, actualResponse, prompt, history, agents, chainNext, toolTraces, logCallback)
+  }
+
+  if (agentName) {
+    return handleToolCall(agentName, toolTag, input, actualResponse, prompt, history, agents, chainNext, toolTraces, logCallback)
+  }
+
+  return { status: 'success', answer: input as string, toolTraces }
+}
+
+const handleDescribe = async (
+  agentName: string | undefined,
+  actualResponse: string,
+  prompt: string,
+  history: LLMMessage[],
+  agents: Agent[],
+  chainNext: (prompt: string, history: LLMMessage[]) => Promise<TaskResult>,
+  toolTraces: ToolTrace[],
+  logCallback?: (log: string) => void
+): Promise<TaskResult> => {
+  const agent = agents.find(a => a.name === agentName)
+  if (!agent) {
+    logCallback && logCallback('No matching agent found for this task')
+    return { status: 'error', answer: 'No matching agent found for this task', toolTraces }
+  }
+
+  return chainNext(
+    JSON.stringify(agent.tools),
+    [
+      ...history,
+      { role: LLMMessageRole.USER, content: prompt },
+      { role: LLMMessageRole.ASSISTANT, content: actualResponse },
+    ]
+  )
+}
+
+const handleToolCall = async (
+  agentName: string,
+  toolTag: string | undefined,
+  input: string | Record<string, any> | undefined,
+  actualResponse: string,
+  prompt: string,
+  history: LLMMessage[],
+  agents: Agent[],
+  chainNext: (prompt: string, history: LLMMessage[]) => Promise<TaskResult>,
+  toolTraces: ToolTrace[],
+  logCallback?: (log: string) => void
+): Promise<TaskResult> => {
+  const agent = agents.find(a => a.name === agentName)
+  if (!agent) {
+    logCallback && logCallback('No matching agent found for this task')
+    return { status: 'error', answer: 'No matching agent found for this task', toolTraces }
+  }
+
+  const tool = findTool(agent, toolTag ?? '')
+  if (!tool) {
+    logCallback && logCallback('No matching tool found for this task')
+    return { status: 'error', answer: 'No matching tool found for this task', toolTraces }
+  }
+
+  let toolResponse: string
+  try {
+    toolResponse = await tool.call(input)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown tool error'
+    logCallback && logCallback(`Tool "${toolTag}" failed: ${message}`)
+    return { status: 'error', answer: `Tool "${toolTag}" failed: ${message}`, toolTraces }
+  }
+
+  toolTraces.push({ tool: toolTag!, input: input ?? '', result: toolResponse })
+
+  return chainNext(
+    toolResponse,
+    [
+      ...history,
+      { role: LLMMessageRole.USER, content: prompt },
+      { role: LLMMessageRole.ASSISTANT, content: actualResponse },
+      { role: LLMMessageRole.USER, content: `tool response: ${toolResponse}` }
+    ]
+  )
+}
+
+export const createOrchestrator = (agents: Agent[], config: OrchestratorConfig): Orchestrator => {
+  const maxSteps = config.maxSteps ?? DEFAULT_MAX_STEPS
+  const stepsInterval = config.stepsInterval
+  const globalContext = buildSystemPrompt(agents, config.optionalPrompt)
+  const llm = config.llmService ?? createLLMService({
+    apiKey: config.apiKey,
+    serverUrl: config.serverUrl ?? 'https://api.openai.com/v1',
+    model: config.model ?? 'gpt-4o',
+    temperature: config.temperature ?? 0
+  })
+
+  return {
+    executeTask: async (prompt, history?, toolTraces?, logCallback?) => {
+      const contextHistory = [...(history || [])]
+
+      if (toolTraces?.length) {
+        contextHistory.unshift({
+          role: LLMMessageRole.SYSTEM,
+          content: 'Known context from previous interactions: ' + JSON.stringify(toolTraces)
         })
-      })
-
-      if (callback) {
-        if (!response.body) {
-          callback('[[END]]')
-
-          return
-        }
-
-        const reader = response.body.getReader()
-        const decoder = new TextDecoder()
-
-        while (true) {
-          const { value, done } = await reader.read()
-          if (done) break
-
-          const chunk = decoder.decode(value, { stream: true })
-
-          chunk.split('\n').forEach(line => {
-            if (line.startsWith('data: ')) {
-              const jsonStr = line.replace('data: ', '').trim()
-
-              if (jsonStr === '[DONE]') return
-
-              try {
-                const json = JSON.parse(jsonStr)
-                const text = json.choices?.[0]?.delta?.content
-                text && callback(text)
-              } catch (error) {
-                console.error('Error parsing JSON response')
-              }
-            }
-          })
-        }
-
-        callback('[[END]]')
-      } else {
-        const finalResponse = (await response.json() as unknown) as LLMResponse
-
-        return finalResponse
       }
+
+      return chain(prompt, contextHistory, [], 0, agents, llm, globalContext, maxSteps, stepsInterval, logCallback)
+    },
+
+    askLLM: async (systemPrompt, prompt, history?, logCallback?) => {
+      return llm.ask(systemPrompt, prompt, history || [], logCallback)
     }
-
-    this.agents = agents
-    this.globalContext = 'You are a useful agent that the purpose is to answer questions about a specific topic.'
-    + 'For that purpose you have a set of agents that are specialized in different topic in order to help you solve each task: '
-    + JSON.stringify(agents.map(agent => ({ name: agent.name, description: agent.description, tools: agent.getTools().map(tl => tl.tag) }))) + '.'
-    + 'Each agent has different tools to solve one specific task, you will have to ask the dedicated agent each time what are its tools and how to use them before calling them.'
-    + 'To get the agent\'s tools descriptions just send me the following json {"action": "describe","agent": "agent\'name"}.'
-    + 'If you want to use a specific tool, send me the following json: {"agent":"agent\'s name","tool":"agent\'s tag","input":"agent\'s input"} and I will do the task for you.'
-    + 'Loop through all this until you have the final answer.'
-    + 'If you can\'t resolve the task, just send me the following json: {"tool":"none","input":"explication on why you cannot help"}.'
-    + 'If you have the final answer, send me the following: {"tool":"finished","input":"the final result"}.'
-    + 'Don\'t explain the process of what you are doing, just do it and always exchange json objects with me and always use the language I am using to communicate with you.'
-    + optionalPrompt || ''
-  }
-
-  private async chain(prompt: string, history: LLMMessage[], logCallback?: (log: string) => void): Promise<string> {
-    this.stepsInterval && await freeze(this.stepsInterval)
-    const answer = await this.questioner(this.globalContext, prompt, history)
-    if (answer?.error) {
-      return `An error occured when calling the LLM ${answer.error.message}`
-    }
-    const actualResponse = answer ? removeInfoStrings(answer.choices[0].message.content).trim() : ''
-    logCallback && logCallback(actualResponse)
-
-    if (actualResponse.startsWith('{')) {
-      const { action, agent, tool, input } = JSON.parse(actualResponse)
-      if (action === 'describe') {
-        const actualAgent = this.agents.find(agt => agt.name === agent)
-        if (actualAgent) {
-          return await this.chain(
-            JSON.stringify(actualAgent.getTools()),
-            [
-              ...history,
-              { role: LLMMessageRole.USER, content: prompt },
-              { role: LLMMessageRole.ASSISTANT, content: actualResponse },
-            ],
-            logCallback
-          )
-        } else {
-          logCallback && logCallback('No matching agent found for this task')
-
-          return 'No matching agent found for this task'
-        }
-      } else {
-        if (agent) {
-          const actualAgent = this.agents.find(agt => agt.name === agent)
-          if (actualAgent) {
-            const actualTool = actualAgent.getTools().find(tl => tl.tag === tool)
-            if (actualTool) {
-              const toolResponse = await actualTool.call(input)
-
-              return this.chain(
-                toolResponse,
-                [
-                  ...history,
-                  { role: LLMMessageRole.USER, content: prompt },
-                  { role: LLMMessageRole.ASSISTANT, content: actualResponse },
-                  { role: LLMMessageRole.USER, content: `tool response: ${toolResponse}` }
-                ],
-                logCallback
-              )
-            } else {
-              logCallback && logCallback('No matching tool found for this task')
-
-              return 'No matching tool found for this task'
-            }
-          } else {
-            logCallback && logCallback('No matching agent found for this task')
-
-            return 'No matching agent found for this task'
-          }
-        } else {
-          return input as string
-        }
-      }
-    }
-
-    return 'Data in wrong format ' + actualResponse
-  }
-
-  async executeTask(prompt: string, history?: LLMMessage[], logCallback?: (log: string) => void) {
-    return this.chain(
-      prompt,
-      [
-        ...(history || [])
-      ],
-      logCallback
-    )
-  }
-
-  async askLLM(systemPrompt: string, prompt: string, history?: LLMMessage[], logCallback?: (log: string) => void) {
-    return this.questioner(systemPrompt, prompt, history || [], logCallback)
   }
 }
