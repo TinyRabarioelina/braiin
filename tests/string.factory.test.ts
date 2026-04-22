@@ -38,4 +38,34 @@ describe('extractJson', () => {
   it('should return null for unclosed braces', () => {
     assert.strictEqual(extractJson('{"tool":"test"'), null)
   })
+
+  it('should handle strings that contain closing braces', () => {
+    const result = extractJson('{"input":"this has a } inside"}')
+    assert.deepStrictEqual(result, { input: 'this has a } inside' })
+  })
+
+  it('should handle strings that contain opening braces', () => {
+    const result = extractJson('{"input":"this has a { inside"}')
+    assert.deepStrictEqual(result, { input: 'this has a { inside' })
+  })
+
+  it('should handle escaped quotes in strings', () => {
+    const result = extractJson('{"input":"she said \\"hi\\""}')
+    assert.deepStrictEqual(result, { input: 'she said "hi"' })
+  })
+
+  it('should handle stringified nested JSON as an input value', () => {
+    const result = extractJson('{"input":"{\\"nested\\":true}"}')
+    assert.deepStrictEqual(result, { input: '{"nested":true}' })
+  })
+
+  it('should skip a fake opening brace in prose and find a real JSON later', () => {
+    const result = extractJson('some { text before {"action":"finish","answer":"ok"}')
+    assert.deepStrictEqual(result, { action: 'finish', answer: 'ok' })
+  })
+
+  it('should strip plain markdown fences without language', () => {
+    const result = extractJson('```\n{"a":1}\n```')
+    assert.deepStrictEqual(result, { a: 1 })
+  })
 })
