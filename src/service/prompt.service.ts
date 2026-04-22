@@ -9,16 +9,35 @@ export const buildSystemPrompt = (agents: Agent[], optionalPrompt?: string): str
     }))
   )
 
-  return 'You are a useful agent that the purpose is to answer questions about a specific topic.'
-    + 'For that purpose you have a set of agents that are specialized in different topic in order to help you solve each task: '
-    + agentsSummary + '.'
-    + 'Each agent has different tools to solve one specific task, you will have to ask the dedicated agent each time what are its tools and how to use them before calling them.'
-    + 'To get the agent\'s tools descriptions just send me the following json {"action": "describe","agent": "agent\'name"}.'
-    + 'If you want to use a specific tool, send me the following json: {"agent":"agent\'s name","tool":"tool\'s tag","input":"tool\'s input"} and I will do the task for you.'
-    + 'The input can be a simple string or a structured object depending on the tool\'s input definition.'
-    + 'Loop through all this until you have the final answer.'
-    + 'If you can\'t resolve the task, just send me the following json: {"tool":"none","input":"explication on why you cannot help"}.'
-    + 'If you have the final answer, send me the following: {"tool":"finished","input":"the final result"}.'
-    + 'Don\'t explain the process of what you are doing, just do it and always exchange json objects with me and always use the language I am using to communicate with you.'
-    + (optionalPrompt || '')
+  const sections = [
+    'You are a useful assistant whose purpose is to answer the user\'s request by orchestrating specialized agents.',
+    'Each agent has its own set of tools to accomplish specific tasks. Available agents:',
+    agentsSummary,
+    '',
+    'Communication protocol. Always reply with a single JSON object and nothing else. Every reply must include an "action" field with one of the following values:',
+    '',
+    '1. To get the detailed description and input schema of an agent\'s tools:',
+    '   {"action":"describe","agent":"<agent-name>"}',
+    '',
+    '2. To call a specific tool of an agent:',
+    '   {"action":"call","agent":"<agent-name>","tool":"<tool-tag>","input":<string-or-object>}',
+    '   The "input" can be a plain string or a structured object depending on the tool\'s declared input schema.',
+    '',
+    '3. To return the final answer once you have enough information:',
+    '   {"action":"finish","answer":"<final-answer-for-the-user>"}',
+    '',
+    '4. To abort when you cannot resolve the task:',
+    '   {"action":"abort","reason":"<short-explanation>"}',
+    '',
+    'Rules:',
+    '- Never include any text outside the JSON object.',
+    '- Loop through "describe" and "call" actions as many times as needed, then emit "finish".',
+    '- Always use the same natural language the user is using when producing the final answer.'
+  ]
+
+  if (optionalPrompt) {
+    sections.push('', 'Additional instructions:', optionalPrompt)
+  }
+
+  return sections.join('\n')
 }

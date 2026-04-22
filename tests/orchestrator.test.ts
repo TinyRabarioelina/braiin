@@ -206,4 +206,77 @@ describe('orchestrator - executeTask', () => {
     assert.strictEqual(result.status, 'success')
     assert.strictEqual(result.answer, 'extracted')
   })
+
+  it('should accept the new canonical "finish" action', async () => {
+    const agent = createAgent('test-agent', 'A test agent', [echoTool])
+    const llm = createMockLLM(['{"action":"finish","answer":"canonical"}'])
+    const orchestrator = createOrchestrator([agent], { apiKey: 'test', llmService: llm })
+
+    const result = await orchestrator.executeTask('Q')
+    assert.strictEqual(result.status, 'success')
+    assert.strictEqual(result.answer, 'canonical')
+  })
+
+  it('should accept the new canonical "call" action', async () => {
+    const agent = createAgent('test-agent', 'A test agent', [echoTool])
+    const llm = createMockLLM([
+      '{"action":"call","agent":"test-agent","tool":"echo","input":"hi"}',
+      '{"action":"finish","answer":"echoed: hi"}'
+    ])
+    const orchestrator = createOrchestrator([agent], { apiKey: 'test', llmService: llm })
+
+    const result = await orchestrator.executeTask('Q')
+    assert.strictEqual(result.status, 'success')
+    assert.strictEqual(result.answer, 'echoed: hi')
+    assert.strictEqual(result.toolTraces.length, 1)
+  })
+
+  it('should return an error for "abort" action', async () => {
+    const agent = createAgent('test-agent', 'A test agent', [echoTool])
+    const llm = createMockLLM(['{"action":"abort","reason":"out of scope"}'])
+    const orchestrator = createOrchestrator([agent], { apiKey: 'test', llmService: llm })
+
+    const result = await orchestrator.executeTask('Q')
+    assert.strictEqual(result.status, 'error')
+    assert.strictEqual(result.answer, 'out of scope')
+  })
+
+  it('should return a distinct error when LLM returns empty content', async () => {
+    const llm: LLMService = {
+      ask: async () => mockLLMResponse('')
+    }
+    const agent = createAgent('test-agent', 'A test agent', [echoTool])
+    const orchestrator = createOrchestrator([agent], { apiKey: 'test', llmService: llm })
+
+    const result = await orchestrator.executeTask('Q')
+    assert.strictEqual(result.status, 'error')
+    assert.ok(result.answer.includes('empty response'))
+  })
+
+  it('should invoke logCallback at each chain step', async () => {
+    const agent = createAgent('test-agent', 'A test agent', [echoTool])
+    const llm = createMockLLM([
+      '{"action":"call","agent":"test-agent","tool":"echo","input":"hello"}',
+      '{"action":"finish","answer":"echoed: hello"}'
+    ])
+    const orchestrator = createOrchestrator([agent], { apiKey: 'test', llmService: llm })
+
+    const logs: string[] = []
+    await orchestrator.executeTask('Q', [], [], (log) => logs.push(log))
+    assert.strictEqual(logs.length, 2)
+    assert.ok(logs[0].includes('call'))
+    assert.ok(logs[1].includes('finish'))
+  })
+
+  it('should carry previous toolTraces into the result', async () => {
+    const agent = createAgent('test-agent', 'A test agent', [echoTool])
+    const llm = createMockLLM(['{"action":"finish","answer":"done"}'])
+    const orchestrator = createOrchestrator([agent], { apiKey: 'test', llmService: llm })
+
+    const previous = [{ tool: 'echo', input: 'a', result: 'echoed: a' }]
+    const result = await orchestrator.executeTask('Q', [], previous)
+    assert.strictEqual(result.toolTraces.length, 1)
+    assert.strictEqual(result.toolTraces[0].result, 'echoed: a')
+    assert.notStrictEqual(result.toolTraces, previous)
+  })
 })

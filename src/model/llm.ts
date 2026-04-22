@@ -42,3 +42,9 @@ export interface TaskResult {
   answer: string
   toolTraces: ToolTrace[]
 }
+
+export type LLMAction =
+  | { action: 'describe'; agent: string }
+  | { action: 'call'; agent: string; tool: string; input?: string | Record<string, any> }
+  | { action: 'finish'; answer: string }
+  | { action: 'abort'; reason: string }
