@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert'
-import { buildMessages } from '../src/service/llm.service'
+import { buildMessages, buildCompletionParams } from '../src/service/llm.service'
+import type { OpenAIConfig } from '../src/service/llm.service'
 import { LLMMessageRole } from '../src/model/llm'
 
 describe('buildMessages - prompt caching', () => {
@@ -27,5 +28,29 @@ describe('buildMessages - prompt caching', () => {
     assert.strictEqual(messages.length, 3)
     assert.strictEqual(messages[1].content, 'prior')
     assert.strictEqual(messages[2].content, 'now')
+  })
+})
+
+describe('buildCompletionParams - JSON output enforcement', () => {
+  const baseConfig: OpenAIConfig = {
+    kind: 'openai',
+    apiKey: 'k',
+    model: 'm',
+    temperature: 0
+  }
+
+  it('should not set response_format when enforceJsonOutput is off', () => {
+    const params = buildCompletionParams(baseConfig, [])
+    assert.strictEqual((params as any).response_format, undefined)
+  })
+
+  it('should set response_format to json_object when enforceJsonOutput is on', () => {
+    const params = buildCompletionParams({ ...baseConfig, enforceJsonOutput: true }, [])
+    assert.deepStrictEqual((params as any).response_format, { type: 'json_object' })
+  })
+
+  it('should default model to gpt-4o when not provided', () => {
+    const params = buildCompletionParams({ kind: 'openai', apiKey: 'k' }, [])
+    assert.strictEqual(params.model, 'gpt-4o')
   })
 })
