@@ -1,26 +1,38 @@
 import { parseLLMAction } from "../factory/action.factory"
 import { extractJson } from "../factory/string.factory"
 import { LLMAction, LLMMessage, LLMMessageRole, LLMResponse, TaskResult, ToolTrace } from "../model/llm"
-import { createLLMService, LLMService } from "../service/llm.service"
+import { createLLMService, LLMConfig, LLMService } from "../service/llm.service"
 import { buildSystemPrompt } from "../service/prompt.service"
 import { freeze } from "../service/timer"
 import { Agent, findTool } from "./agent"
 
 const DEFAULT_MAX_STEPS = 50
 const DEFAULT_TIMEOUT_MS = 60000
+const DEFAULT_SERVER_URL = 'https://api.openai.com/v1'
+const DEFAULT_MODEL = 'gpt-4o'
+const DEFAULT_TEMPERATURE = 0
+
+export type LLMBackend = 'openai' | 'claude-code'
 
 export interface OrchestratorConfig {
+  backend?: LLMBackend
   optionalPrompt?: string
-  temperature?: number
-  apiKey: string
-  serverUrl?: string
-  model?: string
   stepsInterval?: number
   maxSteps?: number
   timeoutMs?: number
   signal?: AbortSignal
-  enablePromptCaching?: boolean
   llmService?: LLMService
+
+  apiKey?: string
+  serverUrl?: string
+  model?: string
+  temperature?: number
+  maxTokens?: number
+  enablePromptCaching?: boolean
+  enforceJsonOutput?: boolean
+
+  sessionId?: string
+  cliPath?: string
 }
 
 export interface Orchestrator {
@@ -35,6 +47,39 @@ interface ChainContext {
   maxSteps: number
   stepsInterval?: number
   logCallback?: (log: string) => void
+}
+
+const buildLLMConfig = (config: OrchestratorConfig): LLMConfig => {
+  const backend: LLMBackend = config.backend ?? 'openai'
+
+  if (backend === 'claude-code') {
+    if (!config.sessionId) {
+      throw new Error('OrchestratorConfig.sessionId is required when backend is "claude-code"')
+    }
+    return {
+      kind: 'claude-code',
+      sessionId: config.sessionId,
+      cliPath: config.cliPath,
+      timeoutMs: config.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      signal: config.signal
+    }
+  }
+
+  if (!config.apiKey) {
+    throw new Error('OrchestratorConfig.apiKey is required when backend is "openai"')
+  }
+  return {
+    kind: 'openai',
+    apiKey: config.apiKey,
+    serverUrl: config.serverUrl ?? DEFAULT_SERVER_URL,
+    model: config.model ?? DEFAULT_MODEL,
+    temperature: config.temperature ?? DEFAULT_TEMPERATURE,
+    maxTokens: config.maxTokens,
+    timeoutMs: config.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    signal: config.signal,
+    enablePromptCaching: config.enablePromptCaching,
+    enforceJsonOutput: config.enforceJsonOutput
+  }
 }
 
 const runLLM = async (
@@ -162,15 +207,7 @@ const dispatch = async (
 export const createOrchestrator = (agents: Agent[], config: OrchestratorConfig): Orchestrator => {
   const maxSteps = config.maxSteps ?? DEFAULT_MAX_STEPS
   const globalContext = buildSystemPrompt(agents, config.optionalPrompt)
-  const llm = config.llmService ?? createLLMService({
-    apiKey: config.apiKey,
-    serverUrl: config.serverUrl ?? 'https://api.openai.com/v1',
-    model: config.model ?? 'gpt-4o',
-    temperature: config.temperature ?? 0,
-    timeoutMs: config.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-    signal: config.signal,
-    enablePromptCaching: config.enablePromptCaching
-  })
+  const llm = config.llmService ?? createLLMService(buildLLMConfig(config))
 
   return {
     executeTask: async (prompt, history?, toolTraces?, logCallback?) => {
